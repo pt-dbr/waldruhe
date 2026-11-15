@@ -1,10 +1,10 @@
-import {createIdleMotion, IDLE_FRAMES} from './idle-motion.js?v=10';
-import {createSounds} from './sounds.js?v=9';
-import {createState, advance} from './engine.js?v=4';
+import {createIdleMotion, IDLE_FRAMES} from './idle-motion.js?v=11';
+import {createSounds} from './sounds.js?v=11';
+import {createState, advance, nextWait, VISIT_DURATION} from './engine.js?v=11';
 const $=id=>document.getElementById(id);
-const defaults={animalInterval:12,magicInterval:45,exitInterval:3,warn:45,loud:70,reaction:1.2,motion:true,effects:true,volume:20,wizardVoiceURI:'',wizardPitch:.65};
+const defaults={animalInterval:12,dragonMinutes:3,wizardMinutes:5,exitInterval:3,warn:45,loud:70,reaction:1.2,motion:true,effects:true,volume:20,wizardVoiceURI:'',wizardPitch:.65};
 const cfg={...defaults};try{Object.assign(cfg,JSON.parse(localStorage.getItem('waldruhe-clearing-v4')||'{}'))}catch{}
-const bounds={animalInterval:[3,120],magicInterval:[5,300],exitInterval:[1,15],warn:[5,90],loud:[10,100],reaction:[.3,5]};
+const bounds={animalInterval:[3,120],dragonMinutes:[.5,30],wizardMinutes:[.5,30],exitInterval:[1,15],warn:[5,90],loud:[10,100],reaction:[.3,5]};
 for(const [key,[low,high]] of Object.entries(bounds))cfg[key]=Number.isFinite(+cfg[key])?Math.min(high,Math.max(low,+cfg[key])):defaults[key];
 cfg.loud=Math.max(cfg.warn+5,cfg.loud);cfg.motion=cfg.motion!==false;cfg.effects=cfg.effects!==false;cfg.volume=Number.isFinite(+cfg.volume)?Math.max(0,Math.min(50,+cfg.volume)):20;
 const save=()=>{try{localStorage.setItem('waldruhe-clearing-v4',JSON.stringify(cfg))}catch{}};
@@ -37,16 +37,16 @@ const cast=[
 const magicInfo={
  unicorn:{name:'Das Einhorn',text:'Wo Ruhe wohnt, bleibt ein bisschen Magie.',assets:['unicorn','unicorn-rest']},
  dragon:{name:'Der Drache',text:'Eine Aufgabe weniger für Zuhause!',assets:['dragon','dragon-after']},
- wizard:{name:'Der seltene Zauberer',text:'Verzaubert!',assets:['wizard']}
+ wizard:{name:'Der Zauberer',text:'Verzaubert!',assets:['wizard']}
 };
 function settingsUI(){
- for(const key of Object.keys(bounds)){$(key).value=cfg[key];$(key+'Out').textContent=cfg[key]+(['warn','loud'].includes(key)?' / 100':' s')}
+ for(const key of Object.keys(bounds)){$(key).value=cfg[key];$(key+'Out').textContent=cfg[key]+(['warn','loud'].includes(key)?' / 100':['dragonMinutes','wizardMinutes'].includes(key)?' min':' s')}
  configureMotion();$('motion').checked=cfg.motion;$('voice').checked=cfg.effects;configureSounds();document.body.classList.toggle('no-motion',!cfg.motion);
  document.querySelector('.meter').style.background=`linear-gradient(90deg,#82aa75 0 ${cfg.warn}%,#d9bb68 ${cfg.warn}% ${cfg.loud}%,#c77b66 ${cfg.loud}% 100%)`;
 }
 for(const key of Object.keys(bounds))$(key).addEventListener('input',()=>{
  cfg[key]=+$(key).value;if(key==='warn')cfg.loud=Math.max(cfg.loud,cfg.warn+5);if(key==='loud')cfg.warn=Math.min(cfg.warn,cfg.loud-5);
- if(key==='animalInterval')state.arrival=0;if(key==='magicInterval')state.magicWait=0;if(key==='exitInterval'||key==='reaction'){state.departure=0;state.loudFor=0}
+ if(key==='animalInterval')state.arrival=0;if((key==='dragonMinutes'&&state.stage===1)||(key==='wizardMinutes'&&state.stage===2))state.magicWait=0;if(key==='exitInterval'||key==='reaction'){state.departure=0;state.loudFor=0}
  settingsUI();save();render();
 });
 $('test-motion').addEventListener('click',()=>{
@@ -94,7 +94,10 @@ function showMagic(kind){
  },kind==='unicorn'?3000:kind==='dragon'?3500:2200);
  playArrival(kind);
 }
+function timeLabel(seconds){const n=Math.max(0,Math.ceil(seconds));return Math.floor(n/60)+':'+String(n%60).padStart(2,'0')}
 function render(level){
+ $('forest').classList.toggle('magical',state.sparkle);
+ $('rewardTrail').textContent=['Einhorn → Drache → Zauberer','✧ Einhorn besucht · Nächstes Ziel: Drache','✧ Drache besucht · Nächstes Ziel: Zauberer','✧ Alle drei Belohnungen erreicht'][state.stage];
  if(state.count!==displayedCount){for(let i=0;i<10;i++)if((i<state.count)!==(i<displayedCount))animateAnimal(i,i<state.count);displayedCount=state.count}
  if(state.magic!==displayedMagic){showMagic(state.magic);displayedMagic=state.magic}
  const active=mode!=='idle',band=state.band;$('mode').textContent=mode==='demo'?'DEMO · KEINE MESSUNG':mode==='mic'?'MIKROFON AKTIV':'MESSUNG PAUSIERT';
@@ -103,13 +106,17 @@ function render(level){
  let title,subtitle;if(!active){title=state.count?'Die Lichtung macht eine Pause.':'Die Lichtung wartet auf euch.';subtitle='Startet das Mikrofon oder entdeckt den Demomodus.'}
  else if(band==='loud'){title='Die Tiere suchen wieder Ruhe.';subtitle='Etwas leiser – dann fühlen sie sich wieder sicher.'}
  else if(band==='warn'){title='Die Lichtung hält den Atem an.';subtitle='Die Ruhezeit beginnt neu, sobald es wieder leise ist.'}
- else if(state.magic){title='Eure Ruhe hat Besuch angelockt.';subtitle='Genießt euren magischen Moment.'}
- else if(state.count===10){title='Alle Tiere sind da. Jetzt wird es magisch.';subtitle='Mit anhaltender Ruhe lockt ihr einen besonderen Gast an.'}
+ else if(state.magic){title=state.magic==='unicorn'?'Die magische Ruhe hat begonnen.':'Eure Ruhe hat Besuch angelockt.';subtitle='Genießt euren magischen Moment.'}
+ else if(state.stage===3){title='Eure Lichtung ist voller Magie.';subtitle='Alle drei Gäste waren da. Bewahrt gemeinsam eure magische Ruhe.'}
+ else if(state.sparkle){title='Die magische Ruhe bleibt.';subtitle=state.stage===1?'Das Glitzern begleitet euch bis zum Drachen.':'Das Glitzern begleitet euch bis zum Zauberer.'}
+ else if(state.count===10){title='Alle Tiere sind da. Jetzt zählt eure Ruhe.';subtitle='Nach 1:30 Minuten durchgehender Ruhe kommt das Einhorn.'}
  else{title=state.count?'Die Lichtung wird lebendig.':'Ein ruhiger Anfang.';subtitle='Mit jeder ruhigen Phase traut sich ein weiteres Tier zu euch.'}
  $('title').textContent=title;$('subtitle').textContent=subtitle;
- const full=state.count===10,interval=full?cfg.magicInterval:cfg.animalInterval,elapsed=full?state.magicWait:state.arrival;
- $('progressLabel').textContent=state.magic?'Magischer Besuch':full?'Magischer Besuch in':'Nächstes Tier in';
- $('progressBar').style.width=(state.magic?100:Math.min(100,elapsed/interval*100))+'%';$('countdown').textContent=!active?'–':state.magic?'✧':band!=='quiet'?'Pause':Math.max(0,Math.ceil(interval-elapsed))+' s';
+ const full=state.count===10,done=state.stage===3&&!state.magic;
+ const interval=full?nextWait(state,cfg):cfg.animalInterval,elapsed=full?state.magicWait:state.arrival;
+ $('progressLabel').textContent=state.magic?'Magischer Besuch':state.between>0?'Glitzernde Lichtung':done?'Magische Ruhe bewahren':full?['Einhorn in','Drache in','Zauberer in'][state.stage]:'Nächstes Tier in';
+ $('progressBar').style.width=(state.magic?Math.min(100,state.visitElapsed/VISIT_DURATION*100):done?100:Math.min(100,elapsed/Math.max(1,interval)*100))+'%';
+ $('countdown').textContent=!active?'–':state.magic?timeLabel(VISIT_DURATION-state.visitElapsed):state.between>0?'✧':done?'✧':band!=='quiet'?'Pause':timeLabel(interval-elapsed);
  $('start').textContent=mode==='mic'?'Messung pausieren':'Mikrofon starten';$('demo').textContent=mode==='demo'?'Demo pausieren':'Ohne Mikrofon ausprobieren';$('demoControls').hidden=mode!=='demo';
  $('forest').setAttribute('aria-label',`${state.count} von zehn Tieren auf der Waldlichtung${state.magic?', zu Besuch: '+magicInfo[state.magic].name:''}.`);
 }
