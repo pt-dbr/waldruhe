@@ -38,3 +38,6 @@ textarea{display:block;width:100%;resize:vertical;font:inherit;font-size:12px;li
 body.present .magic-loss{flex-shrink:0}body.present .forest{width:min(100%,calc((100dvh - 240px)*1672/941));max-height:calc(100dvh - 240px)}
 
 .forest .magic-loss{position:absolute;left:50%;bottom:3%;transform:translateX(-50%);z-index:110;background:#843c35f2;color:#fff2df;border:1px solid #ef9a7a;border-radius:14px;box-shadow:0 5px 25px #38161255;padding:14px 22px;width:max-content;max-width:85%;text-align:center}.forest .magic-loss strong{font-family:Georgia,serif;font-size:clamp(15px,1.8vw,24px);font-weight:500}.forest .magic-loss p{font-family:system-ui,sans-serif;font-size:clamp(11px,1.2vw,16px);line-height:1.6;margin:8px 0 0}
+
+/* Always within reach, including in iPad portrait and after scrolling. */
+.presentation-dock{position:fixed;bottom:calc(14px + env(safe-area-inset-bottom,0px));right:calc(18px + env(safe-area-inset-right,0px));z-index:200}.presentation-dock button{background:#214b36;color:#fff9df;border:1px solid #a2b592;box-shadow:0 4px 20px #172c2840;padding:13px 21px;min-height:48px;font-weight:650}.presentation-dock button:hover{background:#346749}body:not(.present){padding-bottom:90px}body.present .presentation-dock{display:none}
