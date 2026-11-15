@@ -1,10 +1,10 @@
-import {createIdleMotion, IDLE_FRAMES} from './idle-motion.js?v=11';
-import {createSounds} from './sounds.js?v=11';
-import {createState, advance, nextWait, VISIT_DURATION} from './engine.js?v=11';
+import {createIdleMotion, IDLE_FRAMES} from './idle-motion.js?v=12';
+import {createSounds} from './sounds.js?v=12';
+import {createState, advance, nextWait, VISIT_DURATION} from './engine.js?v=12';
 const $=id=>document.getElementById(id);
-const defaults={animalInterval:12,dragonMinutes:3,wizardMinutes:5,exitInterval:3,warn:45,loud:70,reaction:1.2,motion:true,effects:true,volume:20,wizardVoiceURI:'',wizardPitch:.65};
+const defaults={animalInterval:12,unicornMinutes:1.5,dragonMinutes:3,wizardMinutes:5,exitInterval:3,warn:45,loud:70,reaction:1.2,motion:true,effects:true,volume:20,dragonReward:'Eine Aufgabe weniger für Zuhause!',wizardReward:'Dein Lehrer/deine Lehrerin vergisst, dass sie dir Hausaufgaben geben wollte.'};
 const cfg={...defaults};try{Object.assign(cfg,JSON.parse(localStorage.getItem('waldruhe-clearing-v4')||'{}'))}catch{}
-const bounds={animalInterval:[3,120],dragonMinutes:[.5,30],wizardMinutes:[.5,30],exitInterval:[1,15],warn:[5,90],loud:[10,100],reaction:[.3,5]};
+const bounds={animalInterval:[3,120],unicornMinutes:[.5,30],dragonMinutes:[.5,30],wizardMinutes:[.5,30],exitInterval:[1,15],warn:[5,90],loud:[10,100],reaction:[.3,5]};
 for(const [key,[low,high]] of Object.entries(bounds))cfg[key]=Number.isFinite(+cfg[key])?Math.min(high,Math.max(low,+cfg[key])):defaults[key];
 cfg.loud=Math.max(cfg.warn+5,cfg.loud);cfg.motion=cfg.motion!==false;cfg.effects=cfg.effects!==false;cfg.volume=Number.isFinite(+cfg.volume)?Math.max(0,Math.min(50,+cfg.volume)):20;
 const save=()=>{try{localStorage.setItem('waldruhe-clearing-v4',JSON.stringify(cfg))}catch{}};
@@ -21,6 +21,16 @@ reducedMotion?.addEventListener?.('change',configureMotion);
 const arrivalSounds=createSounds({block:ms=>{voiceCooldown=Math.max(voiceCooldown,performance.now()+ms)},notify:message=>{$('notice').textContent=message}});
 function configureSounds(){arrivalSounds.configure(cfg.effects,cfg.volume);$('volume').value=cfg.volume;$('volumeOut').textContent=cfg.volume+' %'}
 $('volume').addEventListener('input',()=>{cfg.volume=+$('volume').value;configureSounds();save()});
+for(const key of ['dragonReward','wizardReward']){
+ cfg[key]=typeof cfg[key]==='string'?cfg[key].slice(0,240):defaults[key];
+ $(key).value=cfg[key];
+ $(key).addEventListener('input',()=>{cfg[key]=$(key).value.slice(0,240);save();if(state.magic)applyRewardText(state.magic)});
+}
+function applyRewardText(kind){
+ $('storyText').textContent=kind==='dragon'?(cfg.dragonReward.trim()||defaults.dragonReward):magicInfo[kind].text;
+ $('storyNote').textContent=cfg.wizardReward.trim()||defaults.wizardReward;
+ $('storyNote').hidden=kind!=='wizard';
+}
 for(const kind of ['unicorn','dragon','wizard'])$('test-'+kind).addEventListener('click',async()=>{configureSounds();if(kind==='wizard'){arrivalSounds.speakWizardFromTap();return}await arrivalSounds.unlock();arrivalSounds.play(kind)});
 const cast=[
  {id:'rabbit',name:'Kaninchen',x:31,y:55,size:12},
@@ -40,13 +50,13 @@ const magicInfo={
  wizard:{name:'Der Zauberer',text:'Verzaubert!',assets:['wizard']}
 };
 function settingsUI(){
- for(const key of Object.keys(bounds)){$(key).value=cfg[key];$(key+'Out').textContent=cfg[key]+(['warn','loud'].includes(key)?' / 100':['dragonMinutes','wizardMinutes'].includes(key)?' min':' s')}
+ for(const key of Object.keys(bounds)){$(key).value=cfg[key];$(key+'Out').textContent=cfg[key]+(['warn','loud'].includes(key)?' / 100':['unicornMinutes','dragonMinutes','wizardMinutes'].includes(key)?' min':' s')}
  configureMotion();$('motion').checked=cfg.motion;$('voice').checked=cfg.effects;configureSounds();document.body.classList.toggle('no-motion',!cfg.motion);
  document.querySelector('.meter').style.background=`linear-gradient(90deg,#82aa75 0 ${cfg.warn}%,#d9bb68 ${cfg.warn}% ${cfg.loud}%,#c77b66 ${cfg.loud}% 100%)`;
 }
 for(const key of Object.keys(bounds))$(key).addEventListener('input',()=>{
  cfg[key]=+$(key).value;if(key==='warn')cfg.loud=Math.max(cfg.loud,cfg.warn+5);if(key==='loud')cfg.warn=Math.min(cfg.warn,cfg.loud-5);
- if(key==='animalInterval')state.arrival=0;if((key==='dragonMinutes'&&state.stage===1)||(key==='wizardMinutes'&&state.stage===2))state.magicWait=0;if(key==='exitInterval'||key==='reaction'){state.departure=0;state.loudFor=0}
+ if(key==='animalInterval')state.arrival=0;if((key==='unicornMinutes'&&state.stage===0)||(key==='dragonMinutes'&&state.stage===1)||(key==='wizardMinutes'&&state.stage===2))state.magicWait=0;if(key==='exitInterval'||key==='reaction'){state.departure=0;state.loudFor=0}
  settingsUI();save();render();
 });
 $('test-motion').addEventListener('click',()=>{
@@ -88,7 +98,7 @@ function showMagic(kind){
  $('magicLayer').append(node);magicNode=node;
  setTimeout(()=>{if(magicNode!==node||state.magic!==kind)return;
    node.classList.add('settled');$('storyName').textContent=info.name;
-   $('storyText').textContent=info.text;
+   applyRewardText(kind);
    $('storyNote').hidden=kind!=='wizard';$('wizardSpeak').hidden=kind!=='wizard';
    $('story').hidden=false;if(kind==='wizard')$('spell').classList.add('casting');
  },kind==='unicorn'?3000:kind==='dragon'?3500:2200);
@@ -109,7 +119,7 @@ function render(level){
  else if(state.magic){title=state.magic==='unicorn'?'Die magische Ruhe hat begonnen.':'Eure Ruhe hat Besuch angelockt.';subtitle='Genießt euren magischen Moment.'}
  else if(state.stage===3){title='Eure Lichtung ist voller Magie.';subtitle='Alle drei Gäste waren da. Bewahrt gemeinsam eure magische Ruhe.'}
  else if(state.sparkle){title='Die magische Ruhe bleibt.';subtitle=state.stage===1?'Das Glitzern begleitet euch bis zum Drachen.':'Das Glitzern begleitet euch bis zum Zauberer.'}
- else if(state.count===10){title='Alle Tiere sind da. Jetzt zählt eure Ruhe.';subtitle='Nach 1:30 Minuten durchgehender Ruhe kommt das Einhorn.'}
+ else if(state.count===10){title='Alle Tiere sind da. Jetzt zählt eure Ruhe.';subtitle='Nach '+timeLabel(cfg.unicornMinutes*60)+' Minuten durchgehender Ruhe kommt das Einhorn.'}
  else{title=state.count?'Die Lichtung wird lebendig.':'Ein ruhiger Anfang.';subtitle='Mit jeder ruhigen Phase traut sich ein weiteres Tier zu euch.'}
  $('title').textContent=title;$('subtitle').textContent=subtitle;
  const full=state.count===10,done=state.stage===3&&!state.magic;

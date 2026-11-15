@@ -1,6 +1,6 @@
 export const MAX_ANIMALS=10,UNICORN_WAIT=90,VISIT_DURATION=12,EXIT_TRANSITION=1.5;
 export function createState(){return {count:0,arrival:0,magicWait:0,magic:null,departure:0,loudFor:0,band:'quiet',totalQuiet:0,stage:0,sparkle:false,visitElapsed:0,between:0}}
-export function nextWait(s,cfg){return s.stage===0?UNICORN_WAIT:s.stage===1?cfg.dragonMinutes*60:s.stage===2?cfg.wizardMinutes*60:0}
+export function nextWait(s,cfg){return s.stage===0?(cfg.unicornMinutes??UNICORN_WAIT/60)*60:s.stage===1?cfg.dragonMinutes*60:s.stage===2?cfg.wizardMinutes*60:0}
 export function resetMagic(s){s.stage=0;s.sparkle=false;s.magic=null;s.magicWait=0;s.visitElapsed=0;s.between=0}
 // Earned stages: 0 before unicorn, 1 before dragon, 2 before wizard, 3 complete.
 export function advance(s,level,seconds,cfg){
