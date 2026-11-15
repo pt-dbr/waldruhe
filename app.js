@@ -1,25 +1,143 @@
-import {advance} from './engine.js';
-const $=id=>document.getElementById(id);let settings={warn:45,loud:70,delay:1.2,animal:8,scale:'relative',offset:100,scene:'squirrel',motion:true};
-try{Object.assign(settings,JSON.parse(localStorage.getItem('waldruhe')||'{}'))}catch{}
-for(const k of ['warn','loud','delay','animal','offset'])if(!Number.isFinite(+settings[k]))settings[k]=({warn:45,loud:70,delay:1.2,animal:8,offset:100})[k];
-settings.warn=Math.max(5,Math.min(90,+settings.warn));settings.loud=Math.max(settings.warn+5,Math.min(100,+settings.loud));
-let state,mode='idle',stream,ctx,source,analyser,buffer,raf,last=0,smoothed=0,raw=-100,busy=false,epoch=0;
-function reset(){state={state:'quiet',candidate:'quiet',elapsed:0,quietSeconds:0,animals:0};smoothed=0;last=0;}
-reset();function save(){try{localStorage.setItem('waldruhe',JSON.stringify(settings))}catch{}}
-const scenes={squirrel:{title:['Das Eichhörnchen schläft.','Das Eichhörnchen wird unruhig.','Das Eichhörnchen ist wach!'],text:['Eure Ruhe lässt es friedlich weiterschlafen.','Etwas leiser – dann kann es weiterschlafen.','Lasst wieder Ruhe einkehren.']},meadow:{title:['Die Wiese erwacht.','Die Tiere werden vorsichtig.','Die Tiere suchen Schutz.'],text:['Mit jeder ruhigen Phase kommen neue Tiere dazu.','Bei Lärm ziehen sich die Tiere langsam zurück.','Wenn es ruhiger wird, kommen sie wieder.']},traffic:{title:['Zeit für Konzentration.','Es wird unruhig.','Bitte leiser werden.'],text:['So lässt es sich gut arbeiten.','Senkt gemeinsam die Lautstärke.','Ein ruhiger Neustart für alle.']}};
-function controls(){for(const k of ['warn','loud','delay','animal']){$(k).value=settings[k];$(k+'Out').textContent=settings[k]+(k==='delay'||k==='animal'?' s':settings.scale==='db'?' dB':' / 100')} $('scale').value=settings.scale;$('calibration').hidden=settings.scale!=='db';$('unit').textContent=settings.scale==='db'?'dB · geschätzt':'Pegel / 100';$('scene').value=settings.scene;const w=settings.warn,l=settings.loud;$('meter').parentElement.style.setProperty('--warn',w);$('meter').style.left='0%';document.querySelector('.meter').style.background=`linear-gradient(90deg,#7aab7c 0 ${w}%,#e2b851 ${w}% ${l}%,#c87965 ${l}% 100%)`;}
-$('motion').checked=settings.motion!==false;
-$('motion').onchange=()=>{settings.motion=$('motion').checked;save();render()};
-if(!scenes[settings.scene])settings.scene='squirrel';controls();
-for(const k of ['warn','loud','delay','animal'])$(k).oninput=()=>{settings[k]=+$(k).value;if(k==='warn')settings.loud=Math.max(settings.loud,settings.warn+5);if(k==='loud')settings.warn=Math.min(settings.warn,settings.loud-5);controls();save()};
-$('scale').onchange=()=>{settings.scale=$('scale').value;controls();save()};$('scene').onchange=()=>{settings.scene=$('scene').value;reset();save();render()};
-$('calibrate').onclick=()=>{if(mode!=='mic'){ $('notice').textContent='Zum Abgleichen bitte zuerst das Mikrofon starten.';return}settings.offset=+$('reference').value-raw;save();$('notice').textContent='Abgleich gespeichert. Die dB-Anzeige bleibt ein geschätzter Richtwert.'};
-function render(value){const active=mode!=='idle',i=['quiet','warn','loud'].indexOf(state.state),scene=scenes[settings.scene];$('stage').dataset.state=state.state;
-$('stage').dataset.scene=settings.scene;
-$('stage').classList.toggle('motion-off',settings.motion===false);
-$('cinema').setAttribute('aria-label',['Schlafendes','Unruhiges','Waches'][i]+' Eichhörnchen am Waldbach');$('mode').textContent=mode==='demo'?'DEMO · KEINE MESSUNG':mode==='mic'?'MIKROFON AKTIV':'BEREIT ZUM START';$('status').textContent=active?['● Ruhig','● Unruhig','● Laut'][i]:'○ Noch keine Messung';$('sceneTitle').textContent=active?scene.title[i]:'Der Wald wartet auf euch.';$('sceneText').textContent=active?scene.text[i]:'Startet das Mikrofon oder probiert die Szene im Demomodus aus.';for(const k of ['squirrel','animals','traffic'])$(k).style.display=(settings.scene===(k==='animals'?'meadow':k))?'':'none';$('eye').setAttribute('d',state.state==='loud'?'M412 393v12m20-12v12m25-12v12m18-12v12':'M410 398q14 14 28 0m18 0q12 14 24 0');document.querySelectorAll('.animal').forEach((el,n)=>el.classList.toggle('visible',n<Math.floor(state.animals)));$('level').textContent=active?Math.round(value??0):'–';$('meter').style.left=Math.max(0,Math.min(100,value||0))+'%';$('quietTime').textContent=Math.floor(state.quietSeconds)+' s';$('quietBar').style.width=Math.min(100,state.quietSeconds/(settings.animal*6)*100)+'%';$('start').textContent=mode==='mic'?'Messung stoppen':'Mikrofon starten';$('demo').textContent=mode==='demo'?'Demo beenden':'Ohne Mikrofon ausprobieren';$('demoControls').hidden=mode!=='demo';}
-function tick(t){const dt=last?Math.min(.25,(t-last)/1000):0;last=t;let level;if(mode==='mic'){if(ctx.state!=='running'){stop();$('notice').textContent='Messung unterbrochen. Bitte Mikrofon erneut starten.';return}analyser.getFloatTimeDomainData(buffer);let sum=0;for(const v of buffer)sum+=v*v;raw=20*Math.log10(Math.max(1e-6,Math.sqrt(sum/buffer.length)));const measured=Math.max(0,Math.min(100,settings.scale==='db'?raw+settings.offset:raw+100));smoothed+=(measured-smoothed)*(1-Math.exp(-dt/.25));level=smoothed;}else if(mode==='demo')level=+$('demoLevel').value;else return;advance(state,level,dt,settings);render(level);raf=requestAnimationFrame(tick)}
-function stop(){epoch++;cancelAnimationFrame(raf);stream?.getTracks().forEach(t=>t.stop());stream=null;source?.disconnect();source=null;if(ctx){ctx.close().catch(()=>{});ctx=null}analyser=null;mode='idle';reset();render();}
-$('start').onclick=async()=>{if(busy)return;if(mode==='mic'){stop();return}stop();busy=true;$('start').disabled=true;const attempt=epoch;try{if(!navigator.mediaDevices?.getUserMedia)throw new Error('HTTPS');ctx=new(window.AudioContext||window.webkitAudioContext)();await ctx.resume();stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false},video:false});if(attempt!==epoch){stream.getTracks().forEach(t=>t.stop());stream=null;return}source=ctx.createMediaStreamSource(stream);analyser=ctx.createAnalyser();analyser.fftSize=2048;buffer=new Float32Array(analyser.fftSize);source.connect(analyser);await ctx.resume();mode='mic';stream.getTracks()[0].onended=()=>{stop();$('notice').textContent='Mikrofonverbindung beendet. Bitte erneut starten.'};$('notice').textContent='Mikrofon aktiv. Es werden nur Lautstärkewerte ausgewertet; kein Ton gespeichert oder übertragen.';render();raf=requestAnimationFrame(tick)}catch(e){stop();$('notice').textContent=e.message==='HTTPS'?'Mikrofon benötigt HTTPS und einen unterstützten Browser. Bitte den veröffentlichten Link in Safari öffnen.':e.name==='NotAllowedError'?'Mikrofonzugriff nicht erlaubt. Bitte in Safari für diese Website erlauben oder den Demomodus nutzen.':e.name==='NotFoundError'?'Kein Mikrofon gefunden. Du kannst den Demomodus nutzen.':'Mikrofon konnte nicht gestartet werden. Bitte Safari und die Mikrofonfreigabe prüfen.'}finally{busy=false;$('start').disabled=false}};
-$('demo').onclick=()=>{if(busy)return;const was=mode==='demo';stop();if(!was){mode='demo';$('notice').textContent='Demomodus: Der Schieberegler simuliert den Pegel. Das Mikrofon ist aus.';render();raf=requestAnimationFrame(tick)}};$('demoLevel').oninput=()=>{$('demoValue').textContent=$('demoLevel').value};
-$('present').onclick=()=>document.body.classList.add('present');$('stage').ondblclick=()=>document.body.classList.remove('present');document.addEventListener('keydown',e=>{if(e.key==='Escape')document.body.classList.remove('present')});document.addEventListener('visibilitychange',()=>{if(document.hidden&&(mode!=='idle'||busy)){stop();$('notice').textContent='Beim Verlassen der Seite pausiert. Bitte Messung erneut starten.'}});window.addEventListener('pagehide',stop);render();
+import {createState, advance} from './engine.js?v=4';
+const $=id=>document.getElementById(id);
+const defaults={animalInterval:12,magicInterval:45,exitInterval:3,warn:45,loud:70,reaction:1.2,motion:true,voice:false};
+const cfg={...defaults};try{Object.assign(cfg,JSON.parse(localStorage.getItem('waldruhe-clearing-v4')||'{}'))}catch{}
+const bounds={animalInterval:[3,120],magicInterval:[5,300],exitInterval:[1,15],warn:[5,90],loud:[10,100],reaction:[.3,5]};
+for(const [key,[low,high]] of Object.entries(bounds))cfg[key]=Number.isFinite(+cfg[key])?Math.min(high,Math.max(low,+cfg[key])):defaults[key];
+cfg.loud=Math.max(cfg.warn+5,cfg.loud);cfg.motion=cfg.motion!==false;cfg.voice=cfg.voice===true;
+const save=()=>{try{localStorage.setItem('waldruhe-clearing-v4',JSON.stringify(cfg))}catch{}};
+let state=createState(),mode='idle',busy=false,epoch=0,stream=null,audio=null,source=null,analyser=null,samples=null,raf=0,last=0,smoothed=0;
+let displayedCount=0,displayedMagic=null,magicNode=null,voiceTimer=0,voiceCooldown=0;
+const pendingRemoval=new Map();
+const cast=[
+ {id:'rabbit',name:'Kaninchen',x:31,y:55,size:12},
+ {id:'robin',name:'Rotkehlchen',x:67,y:44,size:7,kind:'bird'},
+ {id:'squirrel',name:'Eichhörnchen',x:12,y:63,size:13},
+ {id:'hedgehog',name:'Igel',x:40,y:83,size:12},
+ {id:'fox',name:'Fuchs',x:81,y:73,size:18},
+ {id:'butterfly',name:'Schmetterling',x:43,y:35,size:9,kind:'butterfly'},
+ {id:'deer',name:'Rehkitz',x:20,y:86,size:23},
+ {id:'owl',name:'Eule',x:85,y:47,size:11,kind:'bird'},
+ {id:'badger',name:'Dachs',x:65,y:87,size:17},
+ {id:'raccoon',name:'Waschbär',x:89,y:91,size:17}
+];
+const magicInfo={
+ unicorn:{name:'Das Einhorn',text:'Wo Ruhe wohnt, bleibt ein bisschen Magie.',assets:['unicorn','unicorn-rest']},
+ dragon:{name:'Der Drache',text:'Eine Aufgabe weniger für Zuhause!',assets:['dragon','dragon-after']},
+ wizard:{name:'Der seltene Zauberer',text:'Hokus, Fokus, wunderbar – die Hausaufgabe? Eben war sie noch da!',assets:['wizard']}
+};
+function settingsUI(){
+ for(const key of Object.keys(bounds)){$(key).value=cfg[key];$(key+'Out').textContent=cfg[key]+(['warn','loud'].includes(key)?' / 100':' s')}
+ $('motion').checked=cfg.motion;$('voice').checked=cfg.voice;document.body.classList.toggle('no-motion',!cfg.motion);
+ document.querySelector('.meter').style.background=`linear-gradient(90deg,#82aa75 0 ${cfg.warn}%,#d9bb68 ${cfg.warn}% ${cfg.loud}%,#c77b66 ${cfg.loud}% 100%)`;
+}
+for(const key of Object.keys(bounds))$(key).addEventListener('input',()=>{
+ cfg[key]=+$(key).value;if(key==='warn')cfg.loud=Math.max(cfg.loud,cfg.warn+5);if(key==='loud')cfg.warn=Math.min(cfg.warn,cfg.loud-5);
+ if(key==='animalInterval')state.arrival=0;if(key==='magicInterval')state.magicWait=0;if(key==='exitInterval'||key==='reaction'){state.departure=0;state.loudFor=0}
+ settingsUI();save();render();
+});
+$('motion').addEventListener('change',()=>{cfg.motion=$('motion').checked;settingsUI();save()});
+$('voice').addEventListener('change',()=>{cfg.voice=$('voice').checked;save();if(!cfg.voice)cancelVoice()});
+function animateAnimal(index,visible){
+ const data=cast[index];let node=document.getElementById('animal-'+data.id);
+ clearTimeout(pendingRemoval.get(data.id));pendingRemoval.delete(data.id);
+ if(visible){
+   if(!node){node=document.createElement('div');node.id='animal-'+data.id;node.className='animal '+(data.kind||'');
+     node.style.cssText=`--x:${data.x}%;--y:${data.y}%;--size:${data.size}%;--depth:${Math.round(data.y)};--entry:${data.x<50?'-240%':'240%'};--turn:${data.x<50?'-15%':'15%'};--phase:${-index*.7}s`;
+     const image=document.createElement('img');image.className='actor';image.src=`assets/${data.id}.png`;image.alt='';image.draggable=false;node.append(image);$('inhabitants').append(node);
+   }
+   node.classList.remove('leaving');node.classList.add('entering');
+ }else if(node){node.classList.remove('entering');node.classList.add('leaving');const leavingNode=node;pendingRemoval.set(data.id,setTimeout(()=>{leavingNode.remove();pendingRemoval.delete(data.id)},1600))}
+}
+function cancelVoice(){const wasSpeaking='speechSynthesis'in window&&window.speechSynthesis.speaking;clearTimeout(voiceTimer);if('speechSynthesis'in window)window.speechSynthesis.cancel();voiceCooldown=wasSpeaking?performance.now()+700:0}
+function say(text){
+ if(!cfg.voice||!('speechSynthesis'in window)||mode==='idle')return;
+ voiceTimer=setTimeout(()=>{if(!cfg.voice||!state.magic||mode==='idle')return;const utterance=new SpeechSynthesisUtterance(text);utterance.lang='de-DE';utterance.rate=.9;utterance.pitch=1;
+ const german=window.speechSynthesis.getVoices().find(v=>v.lang.startsWith('de'));if(german)utterance.voice=german;
+ utterance.onend=utterance.onerror=()=>{voiceCooldown=performance.now()+1000};window.speechSynthesis.speak(utterance)},2400);
+}
+function showMagic(kind){
+ cancelVoice();if(magicNode){const old=magicNode;old.classList.add('leaving');setTimeout(()=>old.remove(),1450);magicNode=null}
+ $('story').hidden=true;$('spell').classList.remove('casting');
+ if(!kind)return;
+ const info=magicInfo[kind],node=document.createElement('div');node.className='visitor '+kind;
+ for(const [i,asset]of info.assets.entries()){const image=document.createElement('img');image.src=`assets/${asset}.png`;image.alt='';image.className=kind==='unicorn'?(i===0?'standing':'resting'):kind==='dragon'?'actor '+(i===0?'holding':'after-tear'):'actor';node.append(image)}
+ const sparks=document.createElement('div');sparks.className='sparkles';for(let i=0;i<16;i++){const star=document.createElement('i');star.style.cssText=`--px:${15+(i*31)%75}%;--py:${15+(i*23)%70}%;--delay:${(i*.17).toFixed(2)}s`;sparks.append(star)}node.append(sparks);
+ if(kind==='dragon'){const page=document.createElement('div');page.className='torn-page';node.append(page)}
+ $('magicLayer').append(node);magicNode=node;
+ setTimeout(()=>{if(magicNode!==node||state.magic!==kind)return;
+   node.classList.add('settled');$('storyName').textContent=info.name;
+   $('storyText').textContent=kind==='wizard'?'Der Lehrer ist verzaubert … und hat die Hausaufgaben vergessen!':info.text;
+   $('story').hidden=false;if(kind==='wizard')$('spell').classList.add('casting');
+ },kind==='unicorn'?3000:kind==='dragon'?3500:2200);
+ say(kind==='wizard'?'Hokus, Fokus, wunderbar! Die Hausaufgaben sind vergessen.':info.text);
+}
+function render(level){
+ if(state.count!==displayedCount){for(let i=0;i<10;i++)if((i<state.count)!==(i<displayedCount))animateAnimal(i,i<state.count);displayedCount=state.count}
+ if(state.magic!==displayedMagic){showMagic(state.magic);displayedMagic=state.magic}
+ const active=mode!=='idle',band=state.band;$('mode').textContent=mode==='demo'?'DEMO · KEINE MESSUNG':mode==='mic'?'MIKROFON AKTIV':'MESSUNG PAUSIERT';
+ $('status').textContent=active?({quiet:'● Ruhig',warn:'● Unruhig',loud:'● Laut'})[band]:'○ Nicht aktiv';
+ $('level').textContent=active?Math.round(level??smoothed):'–';$('needle').style.left=Math.max(0,Math.min(100,level??smoothed))+'%';$('count').textContent=state.count;
+ let title,subtitle;if(!active){title=state.count?'Die Lichtung macht eine Pause.':'Die Lichtung wartet auf euch.';subtitle='Startet das Mikrofon oder entdeckt den Demomodus.'}
+ else if(band==='loud'){title='Die Tiere suchen wieder Ruhe.';subtitle='Etwas leiser – dann fühlen sie sich wieder sicher.'}
+ else if(band==='warn'){title='Die Lichtung hält den Atem an.';subtitle='Die Ruhezeit beginnt neu, sobald es wieder leise ist.'}
+ else if(state.magic){title='Eure Ruhe hat Besuch angelockt.';subtitle='Genießt euren magischen Moment.'}
+ else if(state.count===10){title='Alle Tiere sind da. Jetzt wird es magisch.';subtitle='Mit anhaltender Ruhe lockt ihr einen besonderen Gast an.'}
+ else{title=state.count?'Die Lichtung wird lebendig.':'Ein ruhiger Anfang.';subtitle='Mit jeder ruhigen Phase traut sich ein weiteres Tier zu euch.'}
+ $('title').textContent=title;$('subtitle').textContent=subtitle;
+ const full=state.count===10,interval=full?cfg.magicInterval:cfg.animalInterval,elapsed=full?state.magicWait:state.arrival;
+ $('progressLabel').textContent=state.magic?'Magischer Besuch':full?'Magischer Besuch in':'Nächstes Tier in';
+ $('progressBar').style.width=(state.magic?100:Math.min(100,elapsed/interval*100))+'%';$('countdown').textContent=!active?'–':state.magic?'✧':band!=='quiet'?'Pause':Math.max(0,Math.ceil(interval-elapsed))+' s';
+ $('start').textContent=mode==='mic'?'Messung pausieren':'Mikrofon starten';$('demo').textContent=mode==='demo'?'Demo pausieren':'Ohne Mikrofon ausprobieren';$('demoControls').hidden=mode!=='demo';
+ $('forest').setAttribute('aria-label',`${state.count} von zehn Tieren auf der Waldlichtung${state.magic?', zu Besuch: '+magicInfo[state.magic].name:''}.`);
+}
+function stop(){
+ epoch++;cancelAnimationFrame(raf);raf=0;last=0;mode='idle';cancelVoice();
+ if(stream){stream.getTracks().forEach(track=>{track.onended=null;track.stop()});stream=null}
+ source?.disconnect();source=null;analyser=null;samples=null;if(audio){audio.close().catch(()=>{});audio=null}render();
+}
+function frame(t){
+ if(mode==='idle')return;const dt=last?Math.min(.25,Math.max(0,(t-last)/1000)):0;last=t;
+ const speaking=('speechSynthesis'in window&&window.speechSynthesis.speaking)||t<voiceCooldown;
+ let value=smoothed;
+ if(mode==='mic'){
+   if(audio.state!=='running'){stop();$('notice').textContent='Messung unterbrochen. Bitte Mikrofon erneut starten.';return}
+   if(!speaking){analyser.getFloatTimeDomainData(samples);let sum=0;for(const v of samples)sum+=v*v;
+     const measured=Math.max(0,Math.min(100,100+20*Math.log10(Math.max(.000001,Math.sqrt(sum/samples.length)))));
+     smoothed+=(measured-smoothed)*(1-Math.exp(-dt/.25));value=smoothed}
+ }else value=+$('demoLevel').value;
+ if(!speaking)advance(state,value,dt,cfg);render(value);raf=requestAnimationFrame(frame);
+}
+$('start').addEventListener('click',async()=>{
+ if(busy)return;if(mode==='mic'){stop();return}stop();busy=true;$('start').disabled=true;$('demo').disabled=true;const ticket=epoch;let localStream=null,localAudio=null;
+ try{
+   if(!navigator.mediaDevices?.getUserMedia)throw new Error('HTTPS');
+   localAudio=new(window.AudioContext||window.webkitAudioContext)();await localAudio.resume();
+   localStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false},video:false});
+   if(ticket!==epoch){localStream.getTracks().forEach(t=>t.stop());await localAudio.close();return}
+   stream=localStream;audio=localAudio;source=audio.createMediaStreamSource(stream);analyser=audio.createAnalyser();analyser.fftSize=2048;samples=new Float32Array(analyser.fftSize);source.connect(analyser);await audio.resume();
+   if(ticket!==epoch)return;
+   stream.getTracks()[0].onended=()=>{stop();$('notice').textContent='Mikrofonverbindung beendet. Bitte erneut starten.'};
+   mode='mic';smoothed=0;last=0;voiceCooldown=0;$('notice').textContent='Mikrofon aktiv. Nur der Pegel wird lokal ausgewertet. Kein Ton wird gespeichert oder übertragen.';render();raf=requestAnimationFrame(frame);
+ }catch(e){localStream?.getTracks().forEach(t=>t.stop());if(localAudio&&localAudio!==audio)localAudio.close().catch(()=>{});stop();
+   $('notice').textContent=e.message==='HTTPS'?'Bitte die HTTPS-Adresse in Safari öffnen. Mikrofonzugriff ist hier nicht verfügbar.':e.name==='NotAllowedError'?'Bitte das Mikrofon in Safari für diese Website erlauben. Alternativ den Demomodus nutzen.':e.name==='NotFoundError'?'Kein Mikrofon gefunden. Der Demomodus funktioniert auch ohne.':'Mikrofon konnte nicht gestartet werden. Bitte Browser und Mikrofonfreigabe prüfen.';
+ }finally{busy=false;$('start').disabled=false;$('demo').disabled=false}
+});
+$('demo').addEventListener('click',()=>{if(busy)return;const running=mode==='demo';stop();if(!running){mode='demo';last=0;voiceCooldown=0;$('notice').textContent='Demomodus: Der Regler ersetzt das Mikrofon. Die Zeitintervalle laufen wie eingestellt.';render();raf=requestAnimationFrame(frame)}});
+$('demoLevel').addEventListener('input',()=>{$('demoValue').textContent=$('demoLevel').value});
+$('reset').addEventListener('click',()=>{state=createState();cancelVoice();render();$('notice').textContent='Neue Runde: Die Lichtung beginnt wieder leer.'});
+$('present').addEventListener('click',()=>document.body.classList.add('present'));
+$('exitPresent').addEventListener('click',()=>document.body.classList.remove('present'));
+$('forest').addEventListener('dblclick',()=>document.body.classList.remove('present'));
+document.addEventListener('keydown',e=>{if(e.key==='Escape')document.body.classList.remove('present')});
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&(mode!=='idle'||busy)){stop();$('notice').textContent='Beim Verlassen der Seite pausiert. Eure Tiere bleiben erhalten. Bitte Messung erneut starten.'}});window.addEventListener('pagehide',stop);
+settingsUI();render();
+// Preload the entire cast, including rare visitors, so reveals do not wait on downloads.
+const assetNames=['clearing',...cast.map(a=>a.id),...Object.values(magicInfo).flatMap(a=>a.assets)];
+let failures=0,loaded=0;$('start').disabled=true;$('demo').disabled=true;
+$('notice').textContent='Die Lichtung und ihre Bewohner werden geladen …';
+for(const name of assetNames){const image=new Image();
+ image.onload=()=>{loaded++;if(loaded===assetNames.length){$('start').disabled=false;$('demo').disabled=false;$('notice').textContent='Alle Bewohner sind bereit. Ton bleibt auf diesem Gerät. Keine Aufnahme, kein Upload.'}};
+ image.onerror=()=>{failures++;$('assetWarning').hidden=false;$('assetWarning').textContent='Ein Bild fehlt. Bitte prüfen, ob der komplette Ordner „assets“ auf GitHub hochgeladen wurde.';$('notice').textContent='Bilder unvollständig geladen. Nach dem vollständigen Hochladen bitte die Seite neu laden.'};
+ image.src=`assets/${name}.png`;
+}
