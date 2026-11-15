@@ -36,3 +36,5 @@ textarea{display:block;width:100%;resize:vertical;font:inherit;font-size:12px;li
 @keyframes magic-edge-yellow{0%,100%{opacity:.4}50%{opacity:1}}
 @keyframes magic-red-once{0%{opacity:1}100%{opacity:0}}
 body.present .magic-loss{flex-shrink:0}body.present .forest{width:min(100%,calc((100dvh - 240px)*1672/941));max-height:calc(100dvh - 240px)}
+
+.forest .magic-loss{position:absolute;left:50%;bottom:3%;transform:translateX(-50%);z-index:110;background:#843c35f2;color:#fff2df;border:1px solid #ef9a7a;border-radius:14px;box-shadow:0 5px 25px #38161255;padding:14px 22px;width:max-content;max-width:85%;text-align:center}.forest .magic-loss strong{font-family:Georgia,serif;font-size:clamp(15px,1.8vw,24px);font-weight:500}.forest .magic-loss p{font-family:system-ui,sans-serif;font-size:clamp(11px,1.2vw,16px);line-height:1.6;margin:8px 0 0}

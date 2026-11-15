@@ -1,6 +1,6 @@
-import {createIdleMotion, IDLE_FRAMES} from './idle-motion.js?v=13';
-import {createSounds} from './sounds.js?v=13';
-import {createState, advance, nextWait, VISIT_DURATION} from './engine.js?v=13';
+import {createIdleMotion, IDLE_FRAMES} from './idle-motion.js?v=14';
+import {createSounds} from './sounds.js?v=14';
+import {createState, advance, nextWait, VISIT_DURATION} from './engine.js?v=14';
 const $=id=>document.getElementById(id);
 const defaults={animalInterval:12,unicornMinutes:1.5,dragonMinutes:3,wizardMinutes:5,exitInterval:3,warn:45,loud:70,reaction:1.2,motion:true,effects:true,volume:20,dragonReward:'Eine Aufgabe weniger für Zuhause!',wizardReward:'Dein Lehrer/deine Lehrerin vergisst, dass sie dir Hausaufgaben geben wollte.'};
 const cfg={...defaults};try{Object.assign(cfg,JSON.parse(localStorage.getItem('waldruhe-clearing-v4')||'{}'))}catch{}
@@ -10,7 +10,7 @@ cfg.loud=Math.max(cfg.warn+5,cfg.loud);cfg.motion=cfg.motion!==false;cfg.effects
 const save=()=>{try{localStorage.setItem('waldruhe-clearing-v4',JSON.stringify(cfg))}catch{}};
 let state=createState(),mode='idle',busy=false,epoch=0,stream=null,audio=null,source=null,analyser=null,samples=null,raf=0,last=0,smoothed=0;
 let displayedCount=0,displayedMagic=null,magicNode=null,voiceTimer=0,voiceCooldown=0;
-let displayedLoss=0,flashTimer=0;
+let displayedLoss=0,flashTimer=0,lossMessageTimer=0;
 const pendingRemoval=new Map();
 const idleMotion=createIdleMotion();
 const reducedMotion=window.matchMedia?window.matchMedia('(prefers-reduced-motion: reduce)'):null;
@@ -109,12 +109,15 @@ function timeLabel(seconds){const n=Math.max(0,Math.ceil(seconds));return Math.f
 function render(level){
  $('forest').classList.toggle('magical',state.sparkle);
  $('forest').classList.toggle('magic-warning',state.sparkle&&state.band!=='quiet');
- $('magicLoss').hidden=!state.lostNotice;
+
  if(state.lossSerial!==displayedLoss){
-  if(state.lossSerial>displayedLoss){clearTimeout(flashTimer);$('redFlash').classList.add('flashing');flashTimer=setTimeout(()=>$('redFlash').classList.remove('flashing'),650)}
+  if(state.lossSerial>displayedLoss){
+   clearTimeout(lossMessageTimer);$('magicLoss').hidden=false;
+   lossMessageTimer=setTimeout(()=>{$('magicLoss').hidden=true},15000);
+   clearTimeout(flashTimer);$('redFlash').classList.add('flashing');flashTimer=setTimeout(()=>$('redFlash').classList.remove('flashing'),650)}
   displayedLoss=state.lossSerial;
  }
- if(!state.lostNotice){clearTimeout(flashTimer);$('redFlash').classList.remove('flashing')}
+ if(!state.lostNotice){clearTimeout(lossMessageTimer);$('magicLoss').hidden=true;clearTimeout(flashTimer);$('redFlash').classList.remove('flashing')}
  $('rewardTrail').textContent=['Einhorn → Drache → Zauberer','✧ Einhorn besucht · Nächstes Ziel: Drache','✧ Drache besucht · Nächstes Ziel: Zauberer','✧ Alle drei Belohnungen erreicht'][state.stage];
  const earned=[state.rewards.dragon?'Drache':null,state.rewards.wizard?'Zauberer':null].filter(Boolean);
  if(earned.length)$('rewardTrail').textContent+=' · Belohnung gilt: '+earned.join(' & ');
@@ -124,7 +127,7 @@ function render(level){
  $('status').textContent=active?({quiet:'● Ruhig',warn:'● Unruhig',loud:'● Laut'})[band]:'○ Nicht aktiv';
  $('level').textContent=active?Math.round(level??smoothed):'–';$('needle').style.left=Math.max(0,Math.min(100,level??smoothed))+'%';$('count').textContent=state.count;
  let title,subtitle;if(!active){title=state.count?'Die Lichtung macht eine Pause.':'Die Lichtung wartet auf euch.';subtitle='Startet das Mikrofon oder entdeckt den Demomodus.'}
- else if(band==='loud'){title=state.lostNotice?'Die magische Ruhe ist fort.':'Die Tiere suchen wieder Ruhe.';subtitle=state.lostNotice?'Erreichte Belohnungen gelten weiter. Der Weg beginnt wieder beim Einhorn.':'Etwas leiser – dann fühlen sie sich wieder sicher.'}
+ else if(band==='loud'){title='Die Tiere suchen wieder Ruhe.';subtitle='Etwas leiser – dann fühlen sie sich wieder sicher.'}
  else if(band==='warn'){title=state.sparkle?'Achtung – bewahrt eure magische Ruhe.':'Die Lichtung hält den Atem an.';subtitle=state.sparkle?'Die Magie bleibt. Die nächste Belohnungszeit pausiert, bis es wieder ruhig ist.':'Die Ruhezeit beginnt neu, sobald es wieder leise ist.'}
  else if(state.magic){title=state.magic==='unicorn'?'Die magische Ruhe hat begonnen.':'Eure Ruhe hat Besuch angelockt.';subtitle='Genießt euren magischen Moment.'}
  else if(state.stage===3){title='Eure Lichtung ist voller Magie.';subtitle='Alle drei Gäste waren da. Bewahrt gemeinsam eure magische Ruhe.'}
