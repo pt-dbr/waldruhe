@@ -1,3 +1,4 @@
+import {createIdleMotion, IDLE_FRAMES} from './idle-motion.js?v=6';
 import {createSounds} from './sounds.js?v=5';
 import {createState, advance} from './engine.js?v=4';
 const $=id=>document.getElementById(id);
@@ -10,6 +11,10 @@ const save=()=>{try{localStorage.setItem('waldruhe-clearing-v4',JSON.stringify(c
 let state=createState(),mode='idle',busy=false,epoch=0,stream=null,audio=null,source=null,analyser=null,samples=null,raf=0,last=0,smoothed=0;
 let displayedCount=0,displayedMagic=null,magicNode=null,voiceTimer=0,voiceCooldown=0;
 const pendingRemoval=new Map();
+const idleMotion=createIdleMotion();
+const reducedMotion=window.matchMedia?window.matchMedia('(prefers-reduced-motion: reduce)'):null;
+function configureMotion(){idleMotion.configure(cfg.motion&&!reducedMotion?.matches)}
+reducedMotion?.addEventListener?.('change',configureMotion);
 const arrivalSounds=createSounds({block:ms=>{voiceCooldown=Math.max(voiceCooldown,performance.now()+ms)},notify:message=>{$('notice').textContent=message}});
 function configureSounds(){arrivalSounds.configure(cfg.effects,cfg.volume);$('volume').value=cfg.volume;$('volumeOut').textContent=cfg.volume+' %'}
 $('volume').addEventListener('input',()=>{cfg.volume=+$('volume').value;configureSounds();save()});
@@ -33,7 +38,7 @@ const magicInfo={
 };
 function settingsUI(){
  for(const key of Object.keys(bounds)){$(key).value=cfg[key];$(key+'Out').textContent=cfg[key]+(['warn','loud'].includes(key)?' / 100':' s')}
- $('motion').checked=cfg.motion;$('voice').checked=cfg.effects;configureSounds();document.body.classList.toggle('no-motion',!cfg.motion);
+ configureMotion();$('motion').checked=cfg.motion;$('voice').checked=cfg.effects;configureSounds();document.body.classList.toggle('no-motion',!cfg.motion);
  document.querySelector('.meter').style.background=`linear-gradient(90deg,#82aa75 0 ${cfg.warn}%,#d9bb68 ${cfg.warn}% ${cfg.loud}%,#c77b66 ${cfg.loud}% 100%)`;
 }
 for(const key of Object.keys(bounds))$(key).addEventListener('input',()=>{
@@ -49,10 +54,15 @@ function animateAnimal(index,visible){
  if(visible){
    if(!node){node=document.createElement('div');node.id='animal-'+data.id;node.className='animal '+(data.kind||'');
      node.style.cssText=`--x:${data.x}%;--y:${data.y}%;--size:${data.size}%;--depth:${Math.round(data.y)};--entry:${data.x<50?'-240%':'240%'};--turn:${data.x<50?'-15%':'15%'};--phase:${-index*.7}s`;
-     const image=document.createElement('img');image.className='actor';image.src=`assets/${data.id}.png`;image.alt='';image.draggable=false;node.append(image);$('inhabitants').append(node);
+     const image=document.createElement('img');image.src=`assets/${data.id}.png`;image.alt='';image.draggable=false;
+     if(IDLE_FRAMES[data.id]){const shell=document.createElement('div');shell.className='actor idle-shell';image.className='idle-base';
+       const overlay=document.createElement('img');overlay.className='idle-variant';overlay.alt='';overlay.draggable=false;overlay.src=`assets/${IDLE_FRAMES[data.id][0].file}.png`;
+       shell.append(image,overlay);node.append(shell);idleMotion.attach(data.id,image,overlay);
+     }else{image.className='actor';node.append(image)}$('inhabitants').append(node);
    }
+   if(node.classList.contains('leaving')&&IDLE_FRAMES[data.id])idleMotion.attach(data.id,node.querySelector('.idle-base'),node.querySelector('.idle-variant'));
    node.classList.remove('leaving');node.classList.add('entering');
- }else if(node){node.classList.remove('entering');node.classList.add('leaving');const leavingNode=node;pendingRemoval.set(data.id,setTimeout(()=>{leavingNode.remove();pendingRemoval.delete(data.id)},1600))}
+ }else if(node){idleMotion.detach(data.id);node.classList.remove('entering');node.classList.add('leaving');const leavingNode=node;pendingRemoval.set(data.id,setTimeout(()=>{leavingNode.remove();pendingRemoval.delete(data.id)},1600))}
 }
 function cancelVoice(){arrivalSounds.stop();const wasSpeaking='speechSynthesis'in window&&window.speechSynthesis.speaking;clearTimeout(voiceTimer);if('speechSynthesis'in window)window.speechSynthesis.cancel();voiceCooldown=wasSpeaking?performance.now()+700:0}
 function playArrival(kind){
@@ -95,7 +105,7 @@ function render(level){
  $('forest').setAttribute('aria-label',`${state.count} von zehn Tieren auf der Waldlichtung${state.magic?', zu Besuch: '+magicInfo[state.magic].name:''}.`);
 }
 function stop(){
- epoch++;cancelAnimationFrame(raf);raf=0;last=0;mode='idle';cancelVoice();
+ idleMotion.pause();epoch++;cancelAnimationFrame(raf);raf=0;last=0;mode='idle';cancelVoice();
  if(stream){stream.getTracks().forEach(track=>{track.onended=null;track.stop()});stream=null}
  source?.disconnect();source=null;analyser=null;samples=null;if(audio){audio.close().catch(()=>{});audio=null}render();
 }
@@ -109,7 +119,7 @@ function frame(t){
      const measured=Math.max(0,Math.min(100,100+20*Math.log10(Math.max(.000001,Math.sqrt(sum/samples.length)))));
      smoothed+=(measured-smoothed)*(1-Math.exp(-dt/.25));value=smoothed}
  }else value=+$('demoLevel').value;
- if(!speaking)advance(state,value,dt,cfg);render(value);raf=requestAnimationFrame(frame);
+ idleMotion.tick(dt);if(!speaking)advance(state,value,dt,cfg);render(value);raf=requestAnimationFrame(frame);
 }
 $('start').addEventListener('click',async()=>{
  if(busy)return;arrivalSounds.unlock();if(mode==='mic'){stop();return}stop();busy=true;$('start').disabled=true;$('demo').disabled=true;const ticket=epoch;let localStream=null,localAudio=null;
@@ -136,7 +146,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')document.body.classL
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&(mode!=='idle'||busy)){stop();$('notice').textContent='Beim Verlassen der Seite pausiert. Eure Tiere bleiben erhalten. Bitte Messung erneut starten.'}});window.addEventListener('pagehide',stop);
 settingsUI();render();
 // Preload the entire cast, including rare visitors, so reveals do not wait on downloads.
-const assetNames=['clearing',...cast.map(a=>a.id),...Object.values(magicInfo).flatMap(a=>a.assets)];
+const assetNames=['clearing',...cast.map(a=>a.id),...Object.values(magicInfo).flatMap(a=>a.assets),...Object.values(IDLE_FRAMES).flatMap(list=>list.map(frame=>frame.file))];
 let failures=0,loaded=0;$('start').disabled=true;$('demo').disabled=true;
 $('notice').textContent='Die Lichtung und ihre Bewohner werden geladen …';
 for(const name of assetNames){const image=new Image();
