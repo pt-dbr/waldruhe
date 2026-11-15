@@ -1,8 +1,8 @@
-import {createIdleMotion, IDLE_FRAMES} from './idle-motion.js?v=7';
-import {createSounds} from './sounds.js?v=7';
+import {createIdleMotion, IDLE_FRAMES} from './idle-motion.js?v=8';
+import {createSounds} from './sounds.js?v=8';
 import {createState, advance} from './engine.js?v=4';
 const $=id=>document.getElementById(id);
-const defaults={animalInterval:12,magicInterval:45,exitInterval:3,warn:45,loud:70,reaction:1.2,motion:true,effects:true,volume:20};
+const defaults={animalInterval:12,magicInterval:45,exitInterval:3,warn:45,loud:70,reaction:1.2,motion:true,effects:true,volume:20,wizardVoiceURI:'',wizardPitch:.65};
 const cfg={...defaults};try{Object.assign(cfg,JSON.parse(localStorage.getItem('waldruhe-clearing-v4')||'{}'))}catch{}
 const bounds={animalInterval:[3,120],magicInterval:[5,300],exitInterval:[1,15],warn:[5,90],loud:[10,100],reaction:[.3,5]};
 for(const [key,[low,high]] of Object.entries(bounds))cfg[key]=Number.isFinite(+cfg[key])?Math.min(high,Math.max(low,+cfg[key])):defaults[key];
@@ -19,7 +19,19 @@ function configureMotion(){
 }
 reducedMotion?.addEventListener?.('change',configureMotion);
 const arrivalSounds=createSounds({block:ms=>{voiceCooldown=Math.max(voiceCooldown,performance.now()+ms)},notify:message=>{$('notice').textContent=message}});
-function configureSounds(){arrivalSounds.configure(cfg.effects,cfg.volume);$('volume').value=cfg.volume;$('volumeOut').textContent=cfg.volume+' %'}
+function configureSounds(){arrivalSounds.configure(cfg.effects,cfg.volume);arrivalSounds.configureWizard(cfg.wizardVoiceURI||'',cfg.wizardPitch);$('volume').value=cfg.volume;$('volumeOut').textContent=cfg.volume+' %'}
+function refreshWizardVoices(){
+ const select=$('wizardVoice');select.textContent='';const automatic=document.createElement('option');automatic.value='';automatic.textContent='Automatisch · bevorzugt männlich';select.append(automatic);
+ for(const voice of arrivalSounds.wizardVoices()){const option=document.createElement('option');option.value=voice.voiceURI;option.textContent=voice.name+' ('+voice.lang+')';select.append(option)}
+ select.value=cfg.wizardVoiceURI||'';
+ if(select.value!==cfg.wizardVoiceURI&&cfg.wizardVoiceURI){select.value='';}
+ $('wizardPitch').value=Number.isFinite(+cfg.wizardPitch)?cfg.wizardPitch:.65;
+ $('wizardPitchOut').textContent=Number($('wizardPitch').value).toFixed(2);
+}
+$('wizardVoice').addEventListener('change',()=>{cfg.wizardVoiceURI=$('wizardVoice').value;configureSounds();save()});
+$('wizardPitch').addEventListener('input',()=>{cfg.wizardPitch=+$('wizardPitch').value;$('wizardPitchOut').textContent=cfg.wizardPitch.toFixed(2);configureSounds();save()});
+if('speechSynthesis'in window)window.speechSynthesis.addEventListener?.('voiceschanged',refreshWizardVoices);
+refreshWizardVoices();
 $('volume').addEventListener('input',()=>{cfg.volume=+$('volume').value;configureSounds();save()});
 for(const kind of ['unicorn','dragon','wizard'])$('test-'+kind).addEventListener('click',async()=>{configureSounds();if(kind==='wizard'){arrivalSounds.speakWizardFromTap();return}await arrivalSounds.unlock();arrivalSounds.play(kind)});
 const cast=[

@@ -18,3 +18,5 @@ body.idle-enabled .idle-variant{opacity:var(--idle-opacity,0)!important}
 .story .story-note{font-family:system-ui,sans-serif;font-size:clamp(11px,1.15vw,16px);max-width:38em;line-height:1.5;margin-top:8px}
 .story button{font-size:11px;min-height:34px;padding:7px 12px;background:#eee8d5;margin-top:5px;color:#244833}
 @media(prefers-reduced-motion:reduce){body.idle-enabled .idle-base{opacity:var(--idle-opacity,1)!important}body.idle-enabled .idle-variant{opacity:var(--idle-opacity,0)!important}}
+
+#wizardVoice{width:100%;padding:11px 8px;border:1px solid #d0d8c9;border-radius:8px;background:#fffdf5;color:#233f32;font:inherit;font-size:12px;margin-top:8px}
