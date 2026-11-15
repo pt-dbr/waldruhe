@@ -1,7 +1,7 @@
 export const MAX_ANIMALS=10,UNICORN_WAIT=90,VISIT_DURATION=12,EXIT_TRANSITION=1.5;
-export function createState(){return {count:0,arrival:0,magicWait:0,magic:null,departure:0,loudFor:0,band:'quiet',totalQuiet:0,stage:0,sparkle:false,visitElapsed:0,between:0}}
+export function createState(){return {count:0,arrival:0,magicWait:0,magic:null,departure:0,loudFor:0,band:'quiet',totalQuiet:0,stage:0,sparkle:false,visitElapsed:0,between:0,rewards:{dragon:false,wizard:false},visitRepeat:false,lossSerial:0,lostNotice:false}}
 export function nextWait(s,cfg){return s.stage===0?(cfg.unicornMinutes??UNICORN_WAIT/60)*60:s.stage===1?cfg.dragonMinutes*60:s.stage===2?cfg.wizardMinutes*60:0}
-export function resetMagic(s){s.stage=0;s.sparkle=false;s.magic=null;s.magicWait=0;s.visitElapsed=0;s.between=0}
+export function resetMagic(s){s.stage=0;s.sparkle=false;s.magic=null;s.magicWait=0;s.visitElapsed=0;s.between=0;s.visitRepeat=false}
 // Earned stages: 0 before unicorn, 1 before dragon, 2 before wizard, 3 complete.
 export function advance(s,level,seconds,cfg){
  if(!Number.isFinite(level)||!Number.isFinite(seconds)||seconds<=0)return s;
@@ -10,11 +10,19 @@ export function advance(s,level,seconds,cfg){
   const dt=Math.min(.05,remaining);remaining-=dt;
   s.band=level>=cfg.loud?'loud':level>=cfg.warn?'warn':'quiet';
   if(s.band!=='quiet'){
-   s.arrival=0;resetMagic(s);
-   if(s.band==='warn'){s.loudFor=0;s.departure=0}
-   else{const previous=s.loudFor;s.loudFor+=dt;
-    s.departure+=Math.max(0,s.loudFor-cfg.reaction)-Math.max(0,previous-cfg.reaction);
-    if(s.departure+1e-8>=cfg.exitInterval){s.count=Math.max(0,s.count-1);s.departure=0}
+   s.arrival=0;
+   if(s.band==='warn'){
+    s.loudFor=0;s.departure=0;
+    // Yellow pauses earned magic and its countdown instead of taking it away.
+    if(!s.sparkle)s.magicWait=0;
+   }else{
+    const previous=s.loudFor;s.loudFor+=dt;
+    if(s.loudFor+1e-8>=cfg.reaction){
+     if(s.sparkle){s.lossSerial++;s.lostNotice=true}
+     resetMagic(s);
+     s.departure+=Math.max(0,s.loudFor-cfg.reaction)-Math.max(0,previous-cfg.reaction);
+     if(s.departure+1e-8>=cfg.exitInterval){s.count=Math.max(0,s.count-1);s.departure=0}
+    }else if(!s.sparkle)s.magicWait=0;
    }continue;
   }
   s.totalQuiet+=dt;s.loudFor=0;s.departure=0;
@@ -23,6 +31,10 @@ export function advance(s,level,seconds,cfg){
   if(s.between>1e-8){s.between=Math.max(0,s.between-dt);continue}
   if(s.stage>=3)continue;
   s.magicWait+=dt;
-  if(s.magicWait+1e-8>=nextWait(s,cfg)){s.magic=['unicorn','dragon','wizard'][s.stage];s.stage++;s.sparkle=true;s.magicWait=0;s.visitElapsed=0}
+  if(s.magicWait+1e-8>=nextWait(s,cfg)){
+   s.magic=['unicorn','dragon','wizard'][s.stage];s.stage++;s.sparkle=true;s.magicWait=0;s.visitElapsed=0;s.lostNotice=false;
+   s.visitRepeat=!!s.rewards[s.magic];
+   if(s.magic==='dragon'||s.magic==='wizard')s.rewards[s.magic]=true;
+  }
  }return s;
 }
