@@ -1,14 +1,19 @@
+import {createSounds} from './sounds.js?v=5';
 import {createState, advance} from './engine.js?v=4';
 const $=id=>document.getElementById(id);
-const defaults={animalInterval:12,magicInterval:45,exitInterval:3,warn:45,loud:70,reaction:1.2,motion:true,voice:false};
+const defaults={animalInterval:12,magicInterval:45,exitInterval:3,warn:45,loud:70,reaction:1.2,motion:true,effects:true,volume:20};
 const cfg={...defaults};try{Object.assign(cfg,JSON.parse(localStorage.getItem('waldruhe-clearing-v4')||'{}'))}catch{}
 const bounds={animalInterval:[3,120],magicInterval:[5,300],exitInterval:[1,15],warn:[5,90],loud:[10,100],reaction:[.3,5]};
 for(const [key,[low,high]] of Object.entries(bounds))cfg[key]=Number.isFinite(+cfg[key])?Math.min(high,Math.max(low,+cfg[key])):defaults[key];
-cfg.loud=Math.max(cfg.warn+5,cfg.loud);cfg.motion=cfg.motion!==false;cfg.voice=cfg.voice===true;
+cfg.loud=Math.max(cfg.warn+5,cfg.loud);cfg.motion=cfg.motion!==false;cfg.effects=cfg.effects!==false;cfg.volume=Number.isFinite(+cfg.volume)?Math.max(0,Math.min(50,+cfg.volume)):20;
 const save=()=>{try{localStorage.setItem('waldruhe-clearing-v4',JSON.stringify(cfg))}catch{}};
 let state=createState(),mode='idle',busy=false,epoch=0,stream=null,audio=null,source=null,analyser=null,samples=null,raf=0,last=0,smoothed=0;
 let displayedCount=0,displayedMagic=null,magicNode=null,voiceTimer=0,voiceCooldown=0;
 const pendingRemoval=new Map();
+const arrivalSounds=createSounds({block:ms=>{voiceCooldown=Math.max(voiceCooldown,performance.now()+ms)},notify:message=>{$('notice').textContent=message}});
+function configureSounds(){arrivalSounds.configure(cfg.effects,cfg.volume);$('volume').value=cfg.volume;$('volumeOut').textContent=cfg.volume+' %'}
+$('volume').addEventListener('input',()=>{cfg.volume=+$('volume').value;configureSounds();save()});
+for(const kind of ['unicorn','dragon','wizard'])$('test-'+kind).addEventListener('click',async()=>{configureSounds();await arrivalSounds.unlock();arrivalSounds.play(kind)});
 const cast=[
  {id:'rabbit',name:'Kaninchen',x:31,y:55,size:12},
  {id:'robin',name:'Rotkehlchen',x:67,y:44,size:7,kind:'bird'},
@@ -24,11 +29,11 @@ const cast=[
 const magicInfo={
  unicorn:{name:'Das Einhorn',text:'Wo Ruhe wohnt, bleibt ein bisschen Magie.',assets:['unicorn','unicorn-rest']},
  dragon:{name:'Der Drache',text:'Eine Aufgabe weniger für Zuhause!',assets:['dragon','dragon-after']},
- wizard:{name:'Der seltene Zauberer',text:'Hokus, Fokus, wunderbar – die Hausaufgabe? Eben war sie noch da!',assets:['wizard']}
+ wizard:{name:'Der seltene Zauberer',text:'Verzaubert!',assets:['wizard']}
 };
 function settingsUI(){
  for(const key of Object.keys(bounds)){$(key).value=cfg[key];$(key+'Out').textContent=cfg[key]+(['warn','loud'].includes(key)?' / 100':' s')}
- $('motion').checked=cfg.motion;$('voice').checked=cfg.voice;document.body.classList.toggle('no-motion',!cfg.motion);
+ $('motion').checked=cfg.motion;$('voice').checked=cfg.effects;configureSounds();document.body.classList.toggle('no-motion',!cfg.motion);
  document.querySelector('.meter').style.background=`linear-gradient(90deg,#82aa75 0 ${cfg.warn}%,#d9bb68 ${cfg.warn}% ${cfg.loud}%,#c77b66 ${cfg.loud}% 100%)`;
 }
 for(const key of Object.keys(bounds))$(key).addEventListener('input',()=>{
@@ -37,7 +42,7 @@ for(const key of Object.keys(bounds))$(key).addEventListener('input',()=>{
  settingsUI();save();render();
 });
 $('motion').addEventListener('change',()=>{cfg.motion=$('motion').checked;settingsUI();save()});
-$('voice').addEventListener('change',()=>{cfg.voice=$('voice').checked;save();if(!cfg.voice)cancelVoice()});
+$('voice').addEventListener('change',()=>{cfg.effects=$('voice').checked;save();configureSounds();if(!cfg.effects)cancelVoice();else arrivalSounds.unlock()});
 function animateAnimal(index,visible){
  const data=cast[index];let node=document.getElementById('animal-'+data.id);
  clearTimeout(pendingRemoval.get(data.id));pendingRemoval.delete(data.id);
@@ -49,12 +54,10 @@ function animateAnimal(index,visible){
    node.classList.remove('leaving');node.classList.add('entering');
  }else if(node){node.classList.remove('entering');node.classList.add('leaving');const leavingNode=node;pendingRemoval.set(data.id,setTimeout(()=>{leavingNode.remove();pendingRemoval.delete(data.id)},1600))}
 }
-function cancelVoice(){const wasSpeaking='speechSynthesis'in window&&window.speechSynthesis.speaking;clearTimeout(voiceTimer);if('speechSynthesis'in window)window.speechSynthesis.cancel();voiceCooldown=wasSpeaking?performance.now()+700:0}
-function say(text){
- if(!cfg.voice||!('speechSynthesis'in window)||mode==='idle')return;
- voiceTimer=setTimeout(()=>{if(!cfg.voice||!state.magic||mode==='idle')return;const utterance=new SpeechSynthesisUtterance(text);utterance.lang='de-DE';utterance.rate=.9;utterance.pitch=1;
- const german=window.speechSynthesis.getVoices().find(v=>v.lang.startsWith('de'));if(german)utterance.voice=german;
- utterance.onend=utterance.onerror=()=>{voiceCooldown=performance.now()+1000};window.speechSynthesis.speak(utterance)},2400);
+function cancelVoice(){arrivalSounds.stop();const wasSpeaking='speechSynthesis'in window&&window.speechSynthesis.speaking;clearTimeout(voiceTimer);if('speechSynthesis'in window)window.speechSynthesis.cancel();voiceCooldown=wasSpeaking?performance.now()+700:0}
+function playArrival(kind){
+ if(!cfg.effects||mode==='idle')return;
+ voiceTimer=setTimeout(()=>{if(cfg.effects&&state.magic===kind&&mode!=='idle')arrivalSounds.play(kind)},kind==='wizard'?2200:250);
 }
 function showMagic(kind){
  cancelVoice();if(magicNode){const old=magicNode;old.classList.add('leaving');setTimeout(()=>old.remove(),1450);magicNode=null}
@@ -67,10 +70,10 @@ function showMagic(kind){
  $('magicLayer').append(node);magicNode=node;
  setTimeout(()=>{if(magicNode!==node||state.magic!==kind)return;
    node.classList.add('settled');$('storyName').textContent=info.name;
-   $('storyText').textContent=kind==='wizard'?'Der Lehrer ist verzaubert … und hat die Hausaufgaben vergessen!':info.text;
+   $('storyText').textContent=info.text;
    $('story').hidden=false;if(kind==='wizard')$('spell').classList.add('casting');
  },kind==='unicorn'?3000:kind==='dragon'?3500:2200);
- say(kind==='wizard'?'Hokus, Fokus, wunderbar! Die Hausaufgaben sind vergessen.':info.text);
+ playArrival(kind);
 }
 function render(level){
  if(state.count!==displayedCount){for(let i=0;i<10;i++)if((i<state.count)!==(i<displayedCount))animateAnimal(i,i<state.count);displayedCount=state.count}
@@ -109,7 +112,7 @@ function frame(t){
  if(!speaking)advance(state,value,dt,cfg);render(value);raf=requestAnimationFrame(frame);
 }
 $('start').addEventListener('click',async()=>{
- if(busy)return;if(mode==='mic'){stop();return}stop();busy=true;$('start').disabled=true;$('demo').disabled=true;const ticket=epoch;let localStream=null,localAudio=null;
+ if(busy)return;arrivalSounds.unlock();if(mode==='mic'){stop();return}stop();busy=true;$('start').disabled=true;$('demo').disabled=true;const ticket=epoch;let localStream=null,localAudio=null;
  try{
    if(!navigator.mediaDevices?.getUserMedia)throw new Error('HTTPS');
    localAudio=new(window.AudioContext||window.webkitAudioContext)();await localAudio.resume();
@@ -123,7 +126,7 @@ $('start').addEventListener('click',async()=>{
    $('notice').textContent=e.message==='HTTPS'?'Bitte die HTTPS-Adresse in Safari öffnen. Mikrofonzugriff ist hier nicht verfügbar.':e.name==='NotAllowedError'?'Bitte das Mikrofon in Safari für diese Website erlauben. Alternativ den Demomodus nutzen.':e.name==='NotFoundError'?'Kein Mikrofon gefunden. Der Demomodus funktioniert auch ohne.':'Mikrofon konnte nicht gestartet werden. Bitte Browser und Mikrofonfreigabe prüfen.';
  }finally{busy=false;$('start').disabled=false;$('demo').disabled=false}
 });
-$('demo').addEventListener('click',()=>{if(busy)return;const running=mode==='demo';stop();if(!running){mode='demo';last=0;voiceCooldown=0;$('notice').textContent='Demomodus: Der Regler ersetzt das Mikrofon. Die Zeitintervalle laufen wie eingestellt.';render();raf=requestAnimationFrame(frame)}});
+$('demo').addEventListener('click',()=>{if(busy)return;arrivalSounds.unlock();const running=mode==='demo';stop();if(!running){mode='demo';last=0;voiceCooldown=0;$('notice').textContent='Demomodus: Der Regler ersetzt das Mikrofon. Die Zeitintervalle laufen wie eingestellt.';render();raf=requestAnimationFrame(frame)}});
 $('demoLevel').addEventListener('input',()=>{$('demoValue').textContent=$('demoLevel').value});
 $('reset').addEventListener('click',()=>{state=createState();cancelVoice();render();$('notice').textContent='Neue Runde: Die Lichtung beginnt wieder leer.'});
 $('present').addEventListener('click',()=>document.body.classList.add('present'));
