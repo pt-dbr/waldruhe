@@ -1,5 +1,5 @@
-import {createIdleMotion, IDLE_FRAMES} from './idle-motion.js?v=6';
-import {createSounds} from './sounds.js?v=5';
+import {createIdleMotion, IDLE_FRAMES} from './idle-motion.js?v=7';
+import {createSounds} from './sounds.js?v=7';
 import {createState, advance} from './engine.js?v=4';
 const $=id=>document.getElementById(id);
 const defaults={animalInterval:12,magicInterval:45,exitInterval:3,warn:45,loud:70,reaction:1.2,motion:true,effects:true,volume:20};
@@ -13,12 +13,15 @@ let displayedCount=0,displayedMagic=null,magicNode=null,voiceTimer=0,voiceCooldo
 const pendingRemoval=new Map();
 const idleMotion=createIdleMotion();
 const reducedMotion=window.matchMedia?window.matchMedia('(prefers-reduced-motion: reduce)'):null;
-function configureMotion(){idleMotion.configure(cfg.motion&&!reducedMotion?.matches)}
+function configureMotion(){
+ idleMotion.configure(cfg.motion);document.body.classList.toggle('idle-enabled',cfg.motion);
+ $('motionInfo').textContent=cfg.motion?'Sanfte Tiergesten sind aktiv – auch bei reduzierter Systembewegung.':'Tierbewegungen sind ausgeschaltet.';
+}
 reducedMotion?.addEventListener?.('change',configureMotion);
 const arrivalSounds=createSounds({block:ms=>{voiceCooldown=Math.max(voiceCooldown,performance.now()+ms)},notify:message=>{$('notice').textContent=message}});
 function configureSounds(){arrivalSounds.configure(cfg.effects,cfg.volume);$('volume').value=cfg.volume;$('volumeOut').textContent=cfg.volume+' %'}
 $('volume').addEventListener('input',()=>{cfg.volume=+$('volume').value;configureSounds();save()});
-for(const kind of ['unicorn','dragon','wizard'])$('test-'+kind).addEventListener('click',async()=>{configureSounds();await arrivalSounds.unlock();arrivalSounds.play(kind)});
+for(const kind of ['unicorn','dragon','wizard'])$('test-'+kind).addEventListener('click',async()=>{configureSounds();if(kind==='wizard'){arrivalSounds.speakWizardFromTap();return}await arrivalSounds.unlock();arrivalSounds.play(kind)});
 const cast=[
  {id:'rabbit',name:'Kaninchen',x:31,y:55,size:12},
  {id:'robin',name:'Rotkehlchen',x:67,y:44,size:7,kind:'bird'},
@@ -46,6 +49,11 @@ for(const key of Object.keys(bounds))$(key).addEventListener('input',()=>{
  if(key==='animalInterval')state.arrival=0;if(key==='magicInterval')state.magicWait=0;if(key==='exitInterval'||key==='reaction'){state.departure=0;state.loudFor=0}
  settingsUI();save();render();
 });
+$('test-motion').addEventListener('click',()=>{
+ if(mode==='idle'){$('notice').textContent='Bitte zuerst Mikrofon oder Demo starten und einige Tiere erscheinen lassen.';return}
+ cfg.motion=true;settingsUI();save();idleMotion.preview();$('notice').textContent='Die bereits anwesenden Tiere zeigen ihre kleinen Gesten jetzt nacheinander.';
+});
+$('wizardSpeak').addEventListener('click',()=>{arrivalSounds.speakWizardFromTap()});
 $('motion').addEventListener('change',()=>{cfg.motion=$('motion').checked;settingsUI();save()});
 $('voice').addEventListener('change',()=>{cfg.effects=$('voice').checked;save();configureSounds();if(!cfg.effects)cancelVoice();else arrivalSounds.unlock()});
 function animateAnimal(index,visible){
@@ -81,6 +89,7 @@ function showMagic(kind){
  setTimeout(()=>{if(magicNode!==node||state.magic!==kind)return;
    node.classList.add('settled');$('storyName').textContent=info.name;
    $('storyText').textContent=info.text;
+   $('storyNote').hidden=kind!=='wizard';$('wizardSpeak').hidden=kind!=='wizard';
    $('story').hidden=false;if(kind==='wizard')$('spell').classList.add('casting');
  },kind==='unicorn'?3000:kind==='dragon'?3500:2200);
  playArrival(kind);

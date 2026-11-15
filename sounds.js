@@ -2,7 +2,15 @@
 export function createSounds({block=()=>{},notify=()=>{}}={}){
  let context=null,master=null,enabled=true,volume=.2;const active=new Set();
  function configure(on,percent){enabled=on;volume=Math.max(0,Math.min(.5,percent/100));if(master)master.gain.value=volume*.45;if(!on)stop()}
- function unlock(){try{const C=window.AudioContext||window.webkitAudioContext;if(!C)return Promise.resolve(false);if(!context||context.state==='closed'){context=new C();master=context.createGain();master.gain.value=volume*.45;master.connect(context.destination)}return context.resume().then(()=>true).catch(()=>false)}catch{return Promise.resolve(false)}}
+ function unlock(){primeSpeech();try{const C=window.AudioContext||window.webkitAudioContext;if(!C)return Promise.resolve(false);if(!context||context.state==='closed'){context=new C();master=context.createGain();master.gain.value=volume*.45;master.connect(context.destination)}return context.resume().then(()=>true).catch(()=>false)}catch{return Promise.resolve(false)}}
+ function primeSpeech(){
+  if(!enabled||!('speechSynthesis'in window))return;
+  try{const primer=new SpeechSynthesisUtterance('.');primer.lang='de-DE';primer.volume=0;window.speechSynthesis.speak(primer)}catch{}
+ }
+ function speakWizardFromTap(){
+  if(!enabled){notify('Bitte Auftrittsklänge zuerst einschalten.');return false}
+  return play('wizard');
+ }
  function tone(frequency,at,duration,strength,type='sine'){
   const oscillator=context.createOscillator(),gain=context.createGain();oscillator.type=type;oscillator.frequency.value=frequency;
   gain.gain.setValueAtTime(.0001,at);gain.gain.exponentialRampToValueAtTime(strength,at+.035);gain.gain.exponentialRampToValueAtTime(.0001,at+duration);
@@ -15,7 +23,9 @@ export function createSounds({block=()=>{},notify=()=>{}}={}){
    if(!('speechSynthesis'in window)){notify('Die Sprachausgabe ist in diesem Browser nicht verfügbar.');return false}
    const utterance=new SpeechSynthesisUtterance('Verzaubert!');utterance.lang='de-DE';utterance.rate=.87;utterance.pitch=.85;utterance.volume=volume;
    const german=window.speechSynthesis.getVoices().find(v=>v.lang.startsWith('de'));if(german)utterance.voice=german;
-   block(3000);utterance.onstart=()=>block(3000);utterance.onend=utterance.onerror=()=>block(800);
+   window.speechSynthesis.cancel();
+   block(3000);utterance.onstart=()=>block(3000);utterance.onend=()=>block(800);
+   utterance.onerror=()=>{block(800);notify('Bitte beim Magier auf „Verzaubert! abspielen“ tippen, um die Stimme in Safari freizugeben.')};
    window.speechSynthesis.speak(utterance);return true;
   }
   if(!context||context.state!=='running'){notify('Bitte „Klang testen“ antippen, um Töne in Safari freizugeben.');return false}
@@ -31,5 +41,5 @@ export function createSounds({block=()=>{},notify=()=>{}}={}){
   }else return false;
   return true;
  }
- return {configure,unlock,play,stop};
+ return {configure,unlock,play,stop,speakWizardFromTap};
 }

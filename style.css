@@ -10,3 +10,11 @@
 
 .idle-shell{position:relative;filter:none}.idle-shell img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;object-position:center bottom;filter:drop-shadow(0 3px 2px #12261930)}.idle-variant{opacity:0}.no-motion .idle-variant{opacity:0!important}.no-motion .idle-base{opacity:1!important}@media(prefers-reduced-motion:reduce){.idle-variant{opacity:0!important}.idle-base{opacity:1!important}}
 .animal.bird .idle-shell{animation:animal-breathe 5s ease-in-out infinite}
+
+/* Definite square dimensions avoid percentage-height collapse in Safari. */
+.animal .idle-shell{position:absolute;left:0;top:0;width:100%;height:auto;aspect-ratio:1/1}
+body.idle-enabled .idle-base,body.idle-enabled .idle-variant{opacity:var(--idle-opacity,1)!important}
+body.idle-enabled .idle-variant{opacity:var(--idle-opacity,0)!important}
+.story .story-note{font-family:system-ui,sans-serif;font-size:clamp(11px,1.15vw,16px);max-width:38em;line-height:1.5;margin-top:8px}
+.story button{font-size:11px;min-height:34px;padding:7px 12px;background:#eee8d5;margin-top:5px;color:#244833}
+@media(prefers-reduced-motion:reduce){body.idle-enabled .idle-base{opacity:var(--idle-opacity,1)!important}body.idle-enabled .idle-variant{opacity:var(--idle-opacity,0)!important}}
