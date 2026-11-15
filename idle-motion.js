@@ -9,11 +9,11 @@ export const IDLE_FRAMES={
 export function createIdleMotion(random=Math.random){
  const actors=new Map();let clock=0,active=null,gapUntil=0,enabled=true;
  const delay=id=>id==='owl'?8+random()*9:4+random()*9;
- function opacity(node,value){node.style.opacity=String(value);node.style.setProperty?.('--idle-opacity',String(value))}
+ function opacity(node,value){const solid=value===1?'1':'0';node.style.opacity=solid;node.style.visibility=solid==='1'?'visible':'hidden';node.style.setProperty?.('--idle-opacity',solid)}
  function clear(actor){opacity(actor.base,1);opacity(actor.overlay,0);actor.elapsed=0}
  function setFrameOpacity(actor,value){opacity(actor.overlay,value);opacity(actor.base,1-value)}
  function preview(){pause();gapUntil=clock;for(const actor of actors.values())actor.next=clock}
- function attach(id,base,overlay){detach(id);if(!IDLE_FRAMES[id])return;actors.set(id,{id,base,overlay,next:clock+2+delay(id),elapsed:0,frame:null})}
+ function attach(id,base,overlay){detach(id);if(!IDLE_FRAMES[id])return;const actor={id,base,overlay,next:clock+2+delay(id),elapsed:0,frame:null};clear(actor);actors.set(id,actor)}
  function detach(id){const actor=actors.get(id);if(actor){clear(actor);if(active===actor)active=null;actors.delete(id)}}
  function configure(value){enabled=value;if(!enabled){for(const actor of actors.values())clear(actor);active=null}}
  function pause(){for(const actor of actors.values())clear(actor);active=null;for(const actor of actors.values())actor.next=clock+delay(actor.id)}
@@ -22,8 +22,8 @@ export function createIdleMotion(random=Math.random){
   if(active){
    const actor=active;actor.elapsed+=Math.min(dt,.25);const p=actor.elapsed/actor.frame.duration;
    if(p>=1){clear(actor);actor.next=clock+delay(actor.id);active=null;gapUntil=clock+1+random()*2;return}
-   // A blink is a quick closed-eye frame. Other gestures ease out and back.
-   const opacity=actor.frame.blink?(p>.2&&p<.8?1:0):Math.sin(Math.PI*p)**2;
+   // One fully opaque pose at a time; no crossfade or transparent in-between.
+   const opacity=actor.frame.blink?(p>.2&&p<.8?1:0):(p>.12&&p<.88?1:0);
    setFrameOpacity(actor,opacity);return;
   }
   if(clock<gapUntil)return;

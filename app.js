@@ -1,4 +1,4 @@
-import {createIdleMotion, IDLE_FRAMES} from './idle-motion.js?v=9';
+import {createIdleMotion, IDLE_FRAMES} from './idle-motion.js?v=10';
 import {createSounds} from './sounds.js?v=9';
 import {createState, advance} from './engine.js?v=4';
 const $=id=>document.getElementById(id);
